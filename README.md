@@ -1,6 +1,6 @@
 # Xeinst AI Business Lead Scraper
 
-An intelligent business lead generation system designed to identify high-value prospects for the Xeinst AI agent marketplace. This scraper targets businesses and individuals who would benefit from automation solutions to optimize operations, reduce manual tasks, or scale revenue.
+A comprehensive lead generation system for Xeinst AI, targeting businesses and developers who could benefit from AI automation solutions. The system automatically scrapes, qualifies, and manages leads from multiple sources with intelligent classification into business and developer categories.
 
 ## 🎯 Objective
 
@@ -8,16 +8,313 @@ Build an intelligent business lead scraper that identifies prospects likely to p
 
 ## 🚀 Features
 
-- **Multi-Source Scraping**: Scrapes from agency directories, e-commerce platforms, startup ecosystems, and professional networks
-- **Intelligent Scoring**: Advanced lead qualification system with fit scoring (1-10 scale)
-- **Data Validation**: Comprehensive validation of scraped data
-- **Deduplication**: Automatic removal of duplicate leads
-- **Quality Assurance**: Built-in quality checks and error handling
-- **Multiple Output Formats**: JSON and Excel export options
-- **Detailed Reporting**: Comprehensive scraping reports and analytics
-- **Database Integration**: Full database support with Supabase (PostgreSQL) and SQLite
-- **Lead Management**: Complete CRUD operations for lead management
-- **Search & Filtering**: Advanced search and filtering capabilities
+### Multi-Source Scraping
+- **Clutch.co** - Digital agencies and service providers
+- **Product Hunt** - Startups and innovative companies
+- **Shopify** - E-commerce businesses
+- **LinkedIn** - Professional companies and individuals
+
+### Intelligent Lead Classification
+- **Business Leads** - Companies and organizations with automation needs
+- **Developer Leads** - Individual developers and freelancers interested in AI tools
+
+### Advanced Lead Scoring
+- Industry relevance analysis
+- Pain point identification
+- Automation opportunity assessment
+- Company size and revenue indicators
+
+### Database Management
+- **Supabase PostgreSQL** integration (with SQLite fallback)
+- Separate tables for business and developer leads
+- Advanced filtering and search capabilities
+- Lead status tracking and notes
+- Export to JSON/CSV formats
+
+## 📋 Requirements
+
+- Python 3.11+
+- Supabase account (optional, for cloud database)
+- Chrome/Chromium browser (for Selenium scrapers)
+
+## 🛠️ Installation
+
+1. **Clone the repository**
+```bash
+git clone <repository-url>
+cd Business
+```
+
+2. **Create virtual environment**
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. **Install dependencies**
+```bash
+pip install -r requirements.txt
+```
+
+4. **Configure environment**
+```bash
+cp env_example.txt .env
+# Edit .env with your configuration
+```
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+Create a `.env` file with the following variables:
+
+```env
+# Supabase Configuration (Optional)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_DB_PASSWORD=your-database-password
+SUPABASE_ANON_KEY=your-anon-key
+
+# Database Configuration (Fallback)
+DATABASE_URL=sqlite:///xeinst_leads.db
+
+# Scraping Configuration
+SCRAPING_DELAY=2
+MAX_RETRIES=3
+TIMEOUT=30
+
+# Output Configuration
+OUTPUT_DIR=./output
+```
+
+### Supabase Setup
+
+1. **Create Supabase Project**
+   - Go to [supabase.com](https://supabase.com)
+   - Create a new project
+   - Note your project URL and database password
+
+2. **Run Database Setup**
+```bash
+python supabase_setup.py
+```
+
+This will create:
+- `business_leads` table for companies and organizations
+- `developer_leads` table for individual developers
+- Optimized indexes for performance
+- Test data to verify functionality
+
+## 🚀 Usage
+
+### Basic Scraping
+
+```bash
+# Run scraper with default settings
+python main.py
+
+# Customize scraping parameters
+python main.py --target 50 --min-score 8.0
+
+# Skip database operations
+python main.py --no-database
+```
+
+### Database Management
+
+The system provides a comprehensive CLI for managing leads:
+
+#### List Leads
+```bash
+# List business leads
+python database_cli.py list-business --limit 20 --min-score 8.0
+
+# List developer leads
+python database_cli.py list-developers --limit 20 --experience-level Senior
+
+# Filter by industry
+python database_cli.py list-business --industry "Technology"
+
+# Filter by status
+python database_cli.py list-business --status "new"
+```
+
+#### Search Leads
+```bash
+# Search across all leads
+python database_cli.py search "automation"
+
+# Search specific lead types
+python database_cli.py search "python" --type developer
+python database_cli.py search "ecommerce" --type business
+```
+
+#### Update Leads
+```bash
+# Update business lead
+python database_cli.py update 123 --type business --status contacted --notes "Initial outreach sent"
+
+# Update developer lead
+python database_cli.py update 456 --type developer --status qualified --skills "Python, AI, Automation"
+```
+
+#### View Statistics
+```bash
+# Get comprehensive database statistics
+python database_cli.py stats
+```
+
+#### Export Data
+```bash
+# Export all leads to JSON
+python database_cli.py export --type all --format json
+
+# Export business leads to CSV
+python database_cli.py export --type business --format csv
+
+# Export both formats
+python database_cli.py export --type developer --format both
+```
+
+## 📊 Database Schema
+
+### Business Leads Table
+```sql
+business_leads (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    industry VARCHAR(100) NOT NULL,
+    website VARCHAR(500) NOT NULL UNIQUE,
+    linkedin VARCHAR(500),
+    email VARCHAR(255),
+    company_size VARCHAR(100),
+    pain_points TEXT,
+    fit_score FLOAT NOT NULL,
+    data_source VARCHAR(100) NOT NULL,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_contacted BOOLEAN DEFAULT FALSE,
+    contact_date TIMESTAMP,
+    notes TEXT,
+    status VARCHAR(50) DEFAULT 'new',
+    annual_revenue VARCHAR(100),
+    location VARCHAR(255),
+    tech_stack TEXT,
+    automation_needs TEXT,
+    decision_maker VARCHAR(255)
+)
+```
+
+### Developer Leads Table
+```sql
+developer_leads (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    website VARCHAR(500) NOT NULL UNIQUE,
+    linkedin VARCHAR(500),
+    email VARCHAR(255),
+    fit_score FLOAT NOT NULL,
+    data_source VARCHAR(100) NOT NULL,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_contacted BOOLEAN DEFAULT FALSE,
+    contact_date TIMESTAMP,
+    notes TEXT,
+    status VARCHAR(50) DEFAULT 'new',
+    skills TEXT,
+    experience_level VARCHAR(50),
+    project_types TEXT,
+    hourly_rate VARCHAR(100),
+    availability VARCHAR(100),
+    portfolio_url VARCHAR(500),
+    github_url VARCHAR(500),
+    automation_interest TEXT
+)
+```
+
+## 🔍 Lead Classification Logic
+
+The system automatically classifies leads using intelligent keyword analysis:
+
+### Developer Indicators
+- Keywords: developer, programmer, coder, freelancer, consultant
+- Technologies: react, python, javascript, node.js, vue, angular
+- Project types: full-stack, frontend, backend, mobile development
+- Company size: solo, individual, freelancer
+
+### Business Indicators
+- Company names and organizations
+- Industry classifications
+- Business pain points
+- Revenue and size indicators
+
+## 📈 Output Files
+
+The scraper generates several output files:
+
+- `xeinst_leads_YYYYMMDD_HHMMSS_qualified.json` - All qualified leads
+- `xeinst_leads_YYYYMMDD_HHMMSS_business.json` - Business leads only
+- `xeinst_leads_YYYYMMDD_HHMMSS_developers.json` - Developer leads only
+- `xeinst_leads_YYYYMMDD_HHMMSS_report.json` - Comprehensive summary report
+
+## 🛡️ Error Handling
+
+- Automatic retry mechanisms for failed requests
+- Graceful handling of rate limiting
+- Comprehensive logging for debugging
+- Data validation and deduplication
+
+## 🔧 Customization
+
+### Adding New Data Sources
+
+1. Create a new scraper class in `scrapers.py`
+2. Implement the required methods
+3. Add to the orchestrator in `main.py`
+
+### Modifying Lead Scoring
+
+Edit the scoring logic in `utils.py` to adjust:
+- Industry weights
+- Pain point scoring
+- Automation opportunity assessment
+
+### Database Schema Changes
+
+1. Update the models in `database.py`
+2. Run database migrations
+3. Update the CLI commands if needed
+
+## 📝 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## 📞 Support
+
+For questions or issues:
+- Check the logs for detailed error messages
+- Review the database setup instructions
+- Ensure all environment variables are configured correctly
+
+## 🔄 Changelog
+
+### v2.0.0
+- Added separate business and developer lead classification
+- Implemented Supabase PostgreSQL integration
+- Enhanced CLI with type-specific commands
+- Improved lead scoring and validation
+- Added comprehensive database management features
+
+### v1.0.0
+- Initial release with multi-source scraping
+- Basic lead qualification and scoring
+- SQLite database integration
+- JSON/Excel export functionality
 
 ## 📊 Target Profile
 
@@ -185,210 +482,3 @@ xeinst-lead-scraper/
     ├── xeinst_leads_*.xlsx
     └── scraping_report_*.json
 ```
-
-## 🔧 Data Sources
-
-### Agency Directories
-- **Clutch.co**: Web design, digital marketing, and development agencies
-- **UpCity**: Top web design and digital marketing companies
-- **GoodFirms**: Web design and digital marketing agencies
-
-### E-commerce Platforms
-- **Shopify Examples**: Featured Shopify stores
-- **Etsy**: Featured shops and sellers
-
-### Startup Ecosystems
-- **Product Hunt**: Business tools and SaaS products
-- **Indie Hackers**: Independent developer products
-
-### Professional Networks
-- **LinkedIn**: Company pages and professional profiles
-
-## 📊 Lead Qualification System
-
-### Scoring Criteria (1-10 Scale)
-
-**High Priority (Score 8-10):**
-- Solo entrepreneurs or small teams (1-10 employees)
-- E-commerce businesses with 100+ products
-- Agencies handling multiple clients
-- SaaS companies with customer support needs
-- Service businesses with appointment scheduling
-
-**Medium Priority (Score 5-7):**
-- Medium-sized businesses (11-50 employees)
-- Established companies with basic automation
-- Local businesses with growth potential
-
-**Low Priority (Score 1-4):**
-- Large enterprises (50+ employees)
-- Companies with advanced automation already
-- Non-profit organizations
-
-### Scoring Weights
-- Company Size: 25%
-- Automation Indicators: 30%
-- Industry Relevance: 20%
-- Data Quality: 15%
-- Contact Availability: 10%
-
-## 📋 Database Schema
-
-### Leads Table
-```sql
-CREATE TABLE leads (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    industry VARCHAR(100) NOT NULL,
-    website VARCHAR(500) NOT NULL UNIQUE,
-    linkedin VARCHAR(500),
-    email VARCHAR(255),
-    company_size VARCHAR(100),
-    pain_points TEXT,
-    fit_score FLOAT NOT NULL,
-    data_source VARCHAR(100) NOT NULL,
-    last_updated TIMESTAMP DEFAULT NOW(),
-    is_contacted BOOLEAN DEFAULT FALSE,
-    contact_date TIMESTAMP,
-    notes TEXT,
-    status VARCHAR(50) DEFAULT 'new'
-);
-```
-
-### Lead Statuses
-- `new`: Freshly scraped lead
-- `contacted`: Initial outreach made
-- `qualified`: Lead shows interest
-- `converted`: Lead became a customer
-- `rejected`: Lead not interested
-
-## 🔍 Automation Opportunity Indicators
-
-The system looks for these signals that suggest automation needs:
-- Multiple customer touchpoints
-- Repetitive data entry tasks
-- High volume of customer inquiries
-- Manual appointment scheduling
-- Basic website with contact forms
-- Social media presence requiring regular updates
-- E-commerce with inventory management
-- Service delivery with booking systems
-
-## ⚙️ Configuration Options
-
-### Scraping Configuration
-```python
-SCRAPING_CONFIG = {
-    "delay_between_requests": 3,  # seconds
-    "max_retries": 3,
-    "timeout": 30,
-    "user_agent_rotation": True,
-    "respect_robots_txt": True,
-    "max_leads_per_source": 50,
-    "target_total_leads": 20
-}
-```
-
-### Database Configuration
-```python
-# Environment variables
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_DB_PASSWORD=your-database-password
-DATABASE_URL=postgresql://postgres:password@host:5432/postgres
-```
-
-## 🛡️ Ethical Considerations
-
-- **Public Data Only**: Only scrapes publicly available information
-- **Rate Limiting**: Implements intelligent delays between requests
-- **Robots.txt Compliance**: Respects website robots.txt files
-- **Terms of Service**: Follows website terms of service
-- **Data Privacy**: Does not collect personal information without consent
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Supabase Connection Issues**
-   ```bash
-   # Check connection
-   python supabase_setup.py check
-   
-   # Verify environment variables
-   echo $SUPABASE_URL
-   echo $SUPABASE_DB_PASSWORD
-   ```
-
-2. **Chrome Driver Issues**
-   ```bash
-   # Reinstall Chrome driver
-   pip uninstall webdriver-manager
-   pip install webdriver-manager
-   ```
-
-3. **Rate Limiting**
-   - Increase delay between requests in `config.py`
-   - Use proxy rotation (advanced setup required)
-
-4. **Missing Dependencies**
-   ```bash
-   pip install -r requirements.txt --upgrade
-   ```
-
-### Debug Mode
-
-Enable detailed logging:
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
-
-## 📈 Performance Optimization
-
-### Tips for Better Results
-
-1. **Adjust Scoring Weights**: Modify weights in `config.py` based on your specific needs
-2. **Add Custom Sources**: Extend scrapers in `scrapers.py` for additional sources
-3. **Fine-tune Delays**: Balance speed vs. reliability with request delays
-4. **Use Proxies**: Implement proxy rotation for high-volume scraping
-5. **Database Indexing**: Ensure proper database indexes for large datasets
-
-### Monitoring
-
-- Check `scraper.log` for detailed operation logs
-- Review `scraping_report_*.json` for performance metrics
-- Monitor database statistics: `python database_cli.py stats`
-- Monitor success rates and error patterns
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## ⚠️ Disclaimer
-
-This tool is for educational and legitimate business purposes only. Users are responsible for:
-- Complying with website terms of service
-- Respecting robots.txt files
-- Following applicable laws and regulations
-- Using scraped data responsibly
-
-## 📞 Support
-
-For questions or issues:
-1. Check the troubleshooting section
-2. Review the logs in `scraper.log`
-3. Check database connection: `python supabase_setup.py check`
-4. Open an issue on GitHub
-5. Contact the development team
-
----
-
-**Built with ❤️ for the Xeinst AI community** 

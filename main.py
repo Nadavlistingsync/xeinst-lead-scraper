@@ -27,7 +27,7 @@ from scrapers import (
     ShopifyScraper,
     LinkedInScraper
 )
-from database import create_database_manager, DatabaseManager
+from database import DatabaseManager, LeadType
 
 class LeadScraperOrchestrator:
     """Main orchestrator for lead scraping operations"""
@@ -36,6 +36,8 @@ class LeadScraperOrchestrator:
         self.scrapers = {}
         self.all_leads = []
         self.qualified_leads = []
+        self.business_leads = []
+        self.developer_leads = []
         self.db_manager = None
         self.use_database = use_database
         
@@ -59,7 +61,7 @@ class LeadScraperOrchestrator:
     def setup_database(self):
         """Initialize database connection"""
         try:
-            self.db_manager = create_database_manager()
+            self.db_manager = DatabaseManager()
             logger.info("Database connection established")
         except Exception as e:
             logger.error(f"Error setting up database: {str(e)}")
@@ -120,11 +122,52 @@ class LeadScraperOrchestrator:
         
         return qualified
     
-    def save_leads_to_database(self) -> int:
+    def classify_leads(self):
+        """Classify leads into business and developer categories"""
+        logger.info("Classifying leads into business and developer categories...")
+        
+        self.business_leads = []
+        self.developer_leads = []
+        
+        for lead in self.qualified_leads:
+            # Use the same classification logic as the database
+            name = lead.get('name', '').lower()
+            industry = lead.get('industry', '').lower()
+            pain_points = lead.get('pain_points', '').lower()
+            company_size = lead.get('company_size', '').lower()
+            
+            # Developer indicators
+            dev_keywords = [
+                'developer', 'programmer', 'coder', 'freelancer', 'consultant',
+                'full-stack', 'frontend', 'backend', 'react', 'python', 'javascript',
+                'node.js', 'vue', 'angular', 'php', 'java', 'c#', 'ruby', 'go',
+                'mobile developer', 'ios', 'android', 'flutter', 'react native'
+            ]
+            
+            # Check if lead is likely a developer
+            is_developer = False
+            for keyword in dev_keywords:
+                if keyword in name or keyword in industry or keyword in pain_points:
+                    is_developer = True
+                    break
+            
+            # Check company size indicators
+            if any(size in company_size for size in ['solo', 'individual', '1', 'freelancer']):
+                if any(keyword in pain_points for keyword in ['code', 'development', 'programming']):
+                    is_developer = True
+            
+            if is_developer:
+                self.developer_leads.append(lead)
+            else:
+                self.business_leads.append(lead)
+        
+        logger.info(f"Classified leads: {len(self.business_leads)} business, {len(self.developer_leads)} developers")
+    
+    def save_leads_to_database(self) -> Dict[str, int]:
         """Save qualified leads to database"""
         if not self.use_database or not self.db_manager:
             logger.warning("Database not available, skipping database save")
-            return 0
+            return {"business": 0, "developer": 0}
         
         try:
             # Convert leads to database format
@@ -143,16 +186,38 @@ class LeadScraperOrchestrator:
                     'last_updated': datetime.utcnow(),
                     'status': 'new'
                 }
+                
+                # Add type-specific fields
+                if lead in self.business_leads:
+                    db_lead.update({
+                        'annual_revenue': lead.get('annual_revenue', ''),
+                        'location': lead.get('location', ''),
+                        'tech_stack': lead.get('tech_stack', ''),
+                        'automation_needs': lead.get('automation_needs', ''),
+                        'decision_maker': lead.get('decision_maker', '')
+                    })
+                elif lead in self.developer_leads:
+                    db_lead.update({
+                        'skills': lead.get('skills', ''),
+                        'experience_level': lead.get('experience_level', ''),
+                        'project_types': lead.get('project_types', ''),
+                        'hourly_rate': lead.get('hourly_rate', ''),
+                        'availability': lead.get('availability', ''),
+                        'portfolio_url': lead.get('portfolio_url', ''),
+                        'github_url': lead.get('github_url', ''),
+                        'automation_interest': lead.get('automation_interest', '')
+                    })
+                
                 db_leads.append(db_lead)
             
             # Save to database
-            added_count = self.db_manager.add_leads_batch(db_leads)
-            logger.info(f"Saved {added_count} leads to database")
-            return added_count
+            result = self.db_manager.add_leads_batch(db_leads)
+            logger.info(f"Saved leads to database: {result['business']} business, {result['developer']} developers")
+            return result
             
         except Exception as e:
             logger.error(f"Error saving leads to database: {str(e)}")
-            return 0
+            return {"business": 0, "developer": 0}
     
     def get_database_statistics(self) -> Dict[str, Any]:
         """Get database statistics"""
@@ -166,17 +231,17 @@ class LeadScraperOrchestrator:
             logger.error(f"Error getting database statistics: {str(e)}")
             return {}
     
-    def get_leads_from_database(self, 
-                               limit: int = 100, 
-                               min_score: float = None,
-                               industry: str = None,
-                               status: str = None) -> List[Dict[str, Any]]:
-        """Get leads from database with optional filters"""
+    def get_business_leads_from_database(self, 
+                                        limit: int = 100, 
+                                        min_score: float = None,
+                                        industry: str = None,
+                                        status: str = None) -> List[Dict[str, Any]]:
+        """Get business leads from database with optional filters"""
         if not self.use_database or not self.db_manager:
             return []
         
         try:
-            leads = self.db_manager.get_leads(
+            leads = self.db_manager.get_business_leads(
                 limit=limit,
                 min_score=min_score,
                 industry=industry,
@@ -187,234 +252,281 @@ class LeadScraperOrchestrator:
             return self.db_manager.export_leads_to_dict(leads)
             
         except Exception as e:
-            logger.error(f"Error getting leads from database: {str(e)}")
+            logger.error(f"Error getting business leads from database: {str(e)}")
             return []
     
-    def search_leads_in_database(self, search_term: str, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_developer_leads_from_database(self, 
+                                         limit: int = 100, 
+                                         min_score: float = None,
+                                         experience_level: str = None,
+                                         status: str = None) -> List[Dict[str, Any]]:
+        """Get developer leads from database with optional filters"""
+        if not self.use_database or not self.db_manager:
+            return []
+        
+        try:
+            leads = self.db_manager.get_developer_leads(
+                limit=limit,
+                min_score=min_score,
+                experience_level=experience_level,
+                status=status
+            )
+            
+            # Convert to dictionary format
+            return self.db_manager.export_leads_to_dict(leads)
+            
+        except Exception as e:
+            logger.error(f"Error getting developer leads from database: {str(e)}")
+            return []
+    
+    def search_leads_in_database(self, search_term: str, lead_type: str = None, limit: int = 50) -> List[Dict[str, Any]]:
         """Search leads in database"""
         if not self.use_database or not self.db_manager:
             return []
         
         try:
-            leads = self.db_manager.search_leads(search_term, limit)
+            lead_type_enum = None
+            if lead_type == 'business':
+                lead_type_enum = LeadType.BUSINESS
+            elif lead_type == 'developer':
+                lead_type_enum = LeadType.DEVELOPER
+            
+            leads = self.db_manager.search_leads(search_term, lead_type_enum, limit)
             return self.db_manager.export_leads_to_dict(leads)
+            
         except Exception as e:
             logger.error(f"Error searching leads in database: {str(e)}")
             return []
     
-    def update_lead_status(self, lead_id: int, status: str, notes: str = None) -> bool:
+    def update_lead_status(self, lead_id: int, lead_type: str, status: str, notes: str = None) -> bool:
         """Update lead status in database"""
         if not self.use_database or not self.db_manager:
             return False
         
         try:
+            lead_type_enum = LeadType.BUSINESS if lead_type == 'business' else LeadType.DEVELOPER
+            
             update_data = {'status': status}
             if notes:
                 update_data['notes'] = notes
             
-            if status == 'contacted':
-                update_data['is_contacted'] = True
-                update_data['contact_date'] = datetime.utcnow()
+            if lead_type == 'business':
+                success = self.db_manager.update_business_lead(lead_id, update_data)
+            else:
+                success = self.db_manager.update_developer_lead(lead_id, update_data)
             
-            success = self.db_manager.update_lead(lead_id, update_data)
             return success
+            
         except Exception as e:
             logger.error(f"Error updating lead status: {str(e)}")
             return False
     
     def validate_leads(self) -> Dict[str, Any]:
-        """Validate all qualified leads"""
-        logger.info("Validating qualified leads...")
+        """Validate scraped leads"""
+        logger.info("Validating scraped leads...")
         
+        validator = DataValidator()
         validation_results = {
-            "total_leads": len(self.qualified_leads),
-            "valid_leads": 0,
-            "invalid_leads": 0,
-            "warnings": [],
-            "errors": []
+            'total_leads': len(self.all_leads),
+            'valid_leads': 0,
+            'invalid_leads': 0,
+            'validation_errors': []
         }
         
-        for lead in self.qualified_leads:
-            validation = DataValidator.validate_lead_data(lead)
-            
-            if validation["is_valid"]:
-                validation_results["valid_leads"] += 1
+        for lead in self.all_leads:
+            is_valid, errors = validator.validate_lead(lead)
+            if is_valid:
+                validation_results['valid_leads'] += 1
             else:
-                validation_results["invalid_leads"] += 1
-                validation_results["errors"].extend(validation["errors"])
-            
-            validation_results["warnings"].extend(validation["warnings"])
+                validation_results['invalid_leads'] += 1
+                validation_results['validation_errors'].extend(errors)
         
         logger.info(f"Validation complete: {validation_results['valid_leads']} valid, {validation_results['invalid_leads']} invalid")
         return validation_results
     
     def generate_summary_report(self) -> Dict[str, Any]:
-        """Generate a summary report of the scraping operation"""
-        report = {
-            "timestamp": datetime.now().isoformat(),
-            "total_leads_scraped": len(self.all_leads),
-            "qualified_leads": len(self.qualified_leads),
-            "sources_used": list(self.scrapers.keys()),
-            "score_distribution": self.get_score_distribution(),
-            "industry_distribution": self.get_industry_distribution(),
-            "top_leads": self.qualified_leads[:5] if self.qualified_leads else []
-        }
+        """Generate comprehensive summary report"""
+        logger.info("Generating summary report...")
         
-        # Add database statistics if available
-        if self.use_database and self.db_manager:
-            db_stats = self.get_database_statistics()
-            report["database_statistics"] = db_stats
+        report = {
+            'timestamp': datetime.now().isoformat(),
+            'scraping_summary': {
+                'total_leads_scraped': len(self.all_leads),
+                'qualified_leads': len(self.qualified_leads),
+                'business_leads': len(self.business_leads),
+                'developer_leads': len(self.developer_leads),
+                'qualification_rate': len(self.qualified_leads) / len(self.all_leads) * 100 if self.all_leads else 0
+            },
+            'score_distribution': self.get_score_distribution(),
+            'industry_distribution': self.get_industry_distribution(),
+            'data_source_distribution': self.get_data_source_distribution(),
+            'database_stats': self.get_database_statistics()
+        }
         
         return report
     
     def get_score_distribution(self) -> Dict[str, int]:
-        """Get distribution of fit scores"""
-        distribution = {"high": 0, "medium": 0, "low": 0}
+        """Get fit score distribution"""
+        distribution = {'high': 0, 'medium': 0, 'low': 0}
         
         for lead in self.qualified_leads:
-            score = lead.get("fit_score", 0)
-            if score >= 8:
-                distribution["high"] += 1
-            elif score >= 6:
-                distribution["medium"] += 1
+            score = lead.get('fit_score', 0)
+            if score >= 8.0:
+                distribution['high'] += 1
+            elif score >= 6.0:
+                distribution['medium'] += 1
             else:
-                distribution["low"] += 1
+                distribution['low'] += 1
         
         return distribution
     
     def get_industry_distribution(self) -> Dict[str, int]:
-        """Get distribution of industries"""
+        """Get industry distribution for business leads"""
         distribution = {}
         
-        for lead in self.qualified_leads:
-            industry = lead.get("industry", "Unknown")
+        for lead in self.business_leads:
+            industry = lead.get('industry', 'Unknown')
             distribution[industry] = distribution.get(industry, 0) + 1
         
-        return dict(sorted(distribution.items(), key=lambda x: x[1], reverse=True))
+        return distribution
+    
+    def get_data_source_distribution(self) -> Dict[str, int]:
+        """Get data source distribution"""
+        distribution = {}
+        
+        for lead in self.all_leads:
+            source = lead.get('data_source', 'Unknown')
+            distribution[source] = distribution.get(source, 0) + 1
+        
+        return distribution
     
     def save_results(self, filename: str = None) -> bool:
         """Save results to files"""
-        if not filename:
-            filename = OUTPUT_CONFIG["filename"]
-        
-        success = True
-        
-        # Save to JSON
-        if not FileUtils.save_leads_to_json(self.qualified_leads, filename):
-            success = False
-        
-        # Save backup to Excel
-        backup_filename = OUTPUT_CONFIG["backup_filename"]
-        if not FileUtils.save_leads_to_excel(self.qualified_leads, backup_filename):
-            success = False
-        
-        # Save to database
-        if self.use_database:
-            db_saved = self.save_leads_to_database()
-            logger.info(f"Database save result: {db_saved} leads saved")
-        
-        # Save summary report
-        report = self.generate_summary_report()
-        report_filename = f"scraping_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         try:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            
+            # Save all leads
+            if not filename:
+                filename = f"xeinst_leads_{timestamp}"
+            
+            # Save qualified leads
+            qualified_filename = f"{filename}_qualified.json"
+            with open(qualified_filename, 'w') as f:
+                json.dump(self.qualified_leads, f, indent=2, default=str)
+            
+            # Save business leads
+            business_filename = f"{filename}_business.json"
+            with open(business_filename, 'w') as f:
+                json.dump(self.business_leads, f, indent=2, default=str)
+            
+            # Save developer leads
+            developer_filename = f"{filename}_developers.json"
+            with open(developer_filename, 'w') as f:
+                json.dump(self.developer_leads, f, indent=2, default=str)
+            
+            # Save summary report
+            report_filename = f"{filename}_report.json"
+            report = self.generate_summary_report()
             with open(report_filename, 'w') as f:
-                json.dump(report, f, indent=2)
-            logger.info(f"Summary report saved to {report_filename}")
+                json.dump(report, f, indent=2, default=str)
+            
+            logger.info(f"Results saved to files:")
+            logger.info(f"  - Qualified leads: {qualified_filename}")
+            logger.info(f"  - Business leads: {business_filename}")
+            logger.info(f"  - Developer leads: {developer_filename}")
+            logger.info(f"  - Summary report: {report_filename}")
+            
+            return True
+            
         except Exception as e:
-            logger.error(f"Failed to save summary report: {str(e)}")
-            success = False
-        
-        return success
+            logger.error(f"Error saving results: {str(e)}")
+            return False
     
     def cleanup(self):
-        """Cleanup all scrapers"""
-        for scraper in self.scrapers.values():
-            try:
-                scraper.cleanup()
-            except Exception as e:
-                logger.error(f"Error cleaning up scraper: {str(e)}")
+        """Cleanup resources"""
+        try:
+            for scraper in self.scrapers.values():
+                if hasattr(scraper, 'cleanup'):
+                    scraper.cleanup()
+            logger.info("Cleanup completed")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
     
     def run_complete_scraping(self, target_leads: int = 20, min_score: float = 7.0) -> Dict[str, Any]:
         """Run complete scraping process"""
+        logger.info("🚀 Starting complete lead scraping process...")
+        
         try:
-            logger.info("=== Starting Xeinst AI Lead Scraping Process ===")
-            
-            # Step 1: Scrape from all sources
+            # Step 1: Scrape leads
             self.scrape_all_sources(target_leads)
             
             # Step 2: Qualify leads
             self.qualify_leads(min_score)
             
-            # Step 3: Validate leads
+            # Step 3: Classify leads
+            self.classify_leads()
+            
+            # Step 4: Validate leads
             validation_results = self.validate_leads()
             
-            # Step 4: Save results
-            save_success = self.save_results()
+            # Step 5: Save to database
+            db_results = self.save_leads_to_database()
             
-            # Step 5: Generate final report
-            final_report = self.generate_summary_report()
-            final_report["validation_results"] = validation_results
-            final_report["save_success"] = save_success
+            # Step 6: Generate report
+            report = self.generate_summary_report()
             
-            logger.info("=== Scraping Process Complete ===")
-            logger.info(f"Final Results: {len(self.qualified_leads)} qualified leads")
+            # Step 7: Save results to files
+            self.save_results()
             
-            return final_report
+            logger.info("✅ Complete scraping process finished successfully!")
+            
+            return {
+                'success': True,
+                'report': report,
+                'validation': validation_results,
+                'database_results': db_results
+            }
             
         except Exception as e:
-            logger.error(f"Error in complete scraping process: {str(e)}")
-            return {"error": str(e)}
+            logger.error(f"❌ Error in complete scraping process: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
         finally:
             self.cleanup()
 
 def main():
-    """Main function to run the scraper"""
-    print("🚀 Xeinst AI Business Lead Scraper")
-    print("=" * 50)
+    """Main function"""
+    import argparse
     
-    # Initialize orchestrator with database support
-    orchestrator = LeadScraperOrchestrator(use_database=True)
+    parser = argparse.ArgumentParser(description='Xeinst AI Business Lead Scraper')
+    parser.add_argument('--target', type=int, default=20, help='Target number of leads to scrape')
+    parser.add_argument('--min-score', type=float, default=7.0, help='Minimum fit score for qualification')
+    parser.add_argument('--no-database', action='store_true', help='Skip database operations')
     
-    try:
-        # Run complete scraping process
-        results = orchestrator.run_complete_scraping(
-            target_leads=20,
-            min_score=7.0
-        )
+    args = parser.parse_args()
+    
+    # Initialize orchestrator
+    orchestrator = LeadScraperOrchestrator(use_database=not args.no_database)
+    
+    # Run complete scraping process
+    result = orchestrator.run_complete_scraping(
+        target_leads=args.target,
+        min_score=args.min_score
+    )
+    
+    if result['success']:
+        print("\n🎉 Scraping completed successfully!")
+        print(f"📊 Total leads scraped: {result['report']['scraping_summary']['total_leads_scraped']}")
+        print(f"✅ Qualified leads: {result['report']['scraping_summary']['qualified_leads']}")
+        print(f"🏢 Business leads: {result['report']['scraping_summary']['business_leads']}")
+        print(f"👨‍💻 Developer leads: {result['report']['scraping_summary']['developer_leads']}")
         
-        # Display results
-        print("\n📊 Scraping Results:")
-        print(f"Total leads scraped: {results.get('total_leads_scraped', 0)}")
-        print(f"Qualified leads: {results.get('qualified_leads', 0)}")
-        print(f"Sources used: {', '.join(results.get('sources_used', []))}")
-        
-        # Display database statistics
-        if 'database_statistics' in results:
-            db_stats = results['database_statistics']
-            print(f"\n🗄️  Database Statistics:")
-            print(f"Total leads in database: {db_stats.get('total_leads', 0)}")
-            print(f"High score leads (8+): {db_stats.get('high_score_leads', 0)}")
-            print(f"Contacted leads: {db_stats.get('contacted_leads', 0)}")
-        
-        if results.get('top_leads'):
-            print("\n🏆 Top 5 Leads:")
-            for i, lead in enumerate(results['top_leads'][:5], 1):
-                print(f"{i}. {lead.get('name', 'N/A')} - Score: {lead.get('fit_score', 0)}")
-                print(f"   Industry: {lead.get('industry', 'N/A')}")
-                print(f"   Website: {lead.get('website', 'N/A')}")
-                print(f"   Pain Points: {lead.get('pain_points', 'N/A')}")
-                print()
-        
-        print(f"\n✅ Results saved to: {OUTPUT_CONFIG['filename']}")
-        print(f"📈 Summary report saved to: scraping_report_*.json")
-        print(f"🗄️  Database: xeinst_leads.db (SQLite)")
-        
-    except KeyboardInterrupt:
-        print("\n⚠️  Scraping interrupted by user")
-    except Exception as e:
-        print(f"\n❌ Error: {str(e)}")
-    finally:
-        orchestrator.cleanup()
+        if result['database_results']:
+            print(f"💾 Database saves: {result['database_results']['business']} business, {result['database_results']['developer']} developers")
+    else:
+        print(f"\n❌ Scraping failed: {result['error']}")
 
 if __name__ == "__main__":
     main() 
