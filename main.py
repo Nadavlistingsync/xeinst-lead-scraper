@@ -27,15 +27,21 @@ from scrapers import (
     ShopifyScraper,
     LinkedInScraper
 )
+from database import create_database_manager, DatabaseManager
 
 class LeadScraperOrchestrator:
     """Main orchestrator for lead scraping operations"""
     
-    def __init__(self):
+    def __init__(self, use_database: bool = True):
         self.scrapers = {}
         self.all_leads = []
         self.qualified_leads = []
+        self.db_manager = None
+        self.use_database = use_database
+        
         self.setup_scrapers()
+        if self.use_database:
+            self.setup_database()
     
     def setup_scrapers(self):
         """Initialize all scrapers"""
@@ -49,6 +55,15 @@ class LeadScraperOrchestrator:
             logger.info("All scrapers initialized successfully")
         except Exception as e:
             logger.error(f"Error setting up scrapers: {str(e)}")
+    
+    def setup_database(self):
+        """Initialize database connection"""
+        try:
+            self.db_manager = create_database_manager()
+            logger.info("Database connection established")
+        except Exception as e:
+            logger.error(f"Error setting up database: {str(e)}")
+            self.use_database = False
     
     def scrape_all_sources(self, target_leads: int = 20) -> List[Dict[str, Any]]:
         """Scrape leads from all configured sources"""
@@ -105,6 +120,108 @@ class LeadScraperOrchestrator:
         
         return qualified
     
+    def save_leads_to_database(self) -> int:
+        """Save qualified leads to database"""
+        if not self.use_database or not self.db_manager:
+            logger.warning("Database not available, skipping database save")
+            return 0
+        
+        try:
+            # Convert leads to database format
+            db_leads = []
+            for lead in self.qualified_leads:
+                db_lead = {
+                    'name': lead.get('name', ''),
+                    'industry': lead.get('industry', ''),
+                    'website': lead.get('website', ''),
+                    'linkedin': lead.get('linkedin', ''),
+                    'email': lead.get('email', ''),
+                    'company_size': lead.get('company_size', ''),
+                    'pain_points': lead.get('pain_points', ''),
+                    'fit_score': lead.get('fit_score', 0.0),
+                    'data_source': lead.get('data_source', ''),
+                    'last_updated': datetime.utcnow(),
+                    'status': 'new'
+                }
+                db_leads.append(db_lead)
+            
+            # Save to database
+            added_count = self.db_manager.add_leads_batch(db_leads)
+            logger.info(f"Saved {added_count} leads to database")
+            return added_count
+            
+        except Exception as e:
+            logger.error(f"Error saving leads to database: {str(e)}")
+            return 0
+    
+    def get_database_statistics(self) -> Dict[str, Any]:
+        """Get database statistics"""
+        if not self.use_database or not self.db_manager:
+            return {}
+        
+        try:
+            stats = self.db_manager.get_statistics()
+            return stats
+        except Exception as e:
+            logger.error(f"Error getting database statistics: {str(e)}")
+            return {}
+    
+    def get_leads_from_database(self, 
+                               limit: int = 100, 
+                               min_score: float = None,
+                               industry: str = None,
+                               status: str = None) -> List[Dict[str, Any]]:
+        """Get leads from database with optional filters"""
+        if not self.use_database or not self.db_manager:
+            return []
+        
+        try:
+            leads = self.db_manager.get_leads(
+                limit=limit,
+                min_score=min_score,
+                industry=industry,
+                status=status
+            )
+            
+            # Convert to dictionary format
+            return self.db_manager.export_leads_to_dict(leads)
+            
+        except Exception as e:
+            logger.error(f"Error getting leads from database: {str(e)}")
+            return []
+    
+    def search_leads_in_database(self, search_term: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Search leads in database"""
+        if not self.use_database or not self.db_manager:
+            return []
+        
+        try:
+            leads = self.db_manager.search_leads(search_term, limit)
+            return self.db_manager.export_leads_to_dict(leads)
+        except Exception as e:
+            logger.error(f"Error searching leads in database: {str(e)}")
+            return []
+    
+    def update_lead_status(self, lead_id: int, status: str, notes: str = None) -> bool:
+        """Update lead status in database"""
+        if not self.use_database or not self.db_manager:
+            return False
+        
+        try:
+            update_data = {'status': status}
+            if notes:
+                update_data['notes'] = notes
+            
+            if status == 'contacted':
+                update_data['is_contacted'] = True
+                update_data['contact_date'] = datetime.utcnow()
+            
+            success = self.db_manager.update_lead(lead_id, update_data)
+            return success
+        except Exception as e:
+            logger.error(f"Error updating lead status: {str(e)}")
+            return False
+    
     def validate_leads(self) -> Dict[str, Any]:
         """Validate all qualified leads"""
         logger.info("Validating qualified leads...")
@@ -142,6 +259,11 @@ class LeadScraperOrchestrator:
             "industry_distribution": self.get_industry_distribution(),
             "top_leads": self.qualified_leads[:5] if self.qualified_leads else []
         }
+        
+        # Add database statistics if available
+        if self.use_database and self.db_manager:
+            db_stats = self.get_database_statistics()
+            report["database_statistics"] = db_stats
         
         return report
     
@@ -185,6 +307,11 @@ class LeadScraperOrchestrator:
         backup_filename = OUTPUT_CONFIG["backup_filename"]
         if not FileUtils.save_leads_to_excel(self.qualified_leads, backup_filename):
             success = False
+        
+        # Save to database
+        if self.use_database:
+            db_saved = self.save_leads_to_database()
+            logger.info(f"Database save result: {db_saved} leads saved")
         
         # Save summary report
         report = self.generate_summary_report()
@@ -245,8 +372,8 @@ def main():
     print("🚀 Xeinst AI Business Lead Scraper")
     print("=" * 50)
     
-    # Initialize orchestrator
-    orchestrator = LeadScraperOrchestrator()
+    # Initialize orchestrator with database support
+    orchestrator = LeadScraperOrchestrator(use_database=True)
     
     try:
         # Run complete scraping process
@@ -261,6 +388,14 @@ def main():
         print(f"Qualified leads: {results.get('qualified_leads', 0)}")
         print(f"Sources used: {', '.join(results.get('sources_used', []))}")
         
+        # Display database statistics
+        if 'database_statistics' in results:
+            db_stats = results['database_statistics']
+            print(f"\n🗄️  Database Statistics:")
+            print(f"Total leads in database: {db_stats.get('total_leads', 0)}")
+            print(f"High score leads (8+): {db_stats.get('high_score_leads', 0)}")
+            print(f"Contacted leads: {db_stats.get('contacted_leads', 0)}")
+        
         if results.get('top_leads'):
             print("\n🏆 Top 5 Leads:")
             for i, lead in enumerate(results['top_leads'][:5], 1):
@@ -272,6 +407,7 @@ def main():
         
         print(f"\n✅ Results saved to: {OUTPUT_CONFIG['filename']}")
         print(f"📈 Summary report saved to: scraping_report_*.json")
+        print(f"🗄️  Database: xeinst_leads.db (SQLite)")
         
     except KeyboardInterrupt:
         print("\n⚠️  Scraping interrupted by user")

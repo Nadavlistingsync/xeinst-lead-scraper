@@ -15,6 +15,9 @@ Build an intelligent business lead scraper that identifies prospects likely to p
 - **Quality Assurance**: Built-in quality checks and error handling
 - **Multiple Output Formats**: JSON and Excel export options
 - **Detailed Reporting**: Comprehensive scraping reports and analytics
+- **Database Integration**: Full database support with Supabase (PostgreSQL) and SQLite
+- **Lead Management**: Complete CRUD operations for lead management
+- **Search & Filtering**: Advanced search and filtering capabilities
 
 ## 📊 Target Profile
 
@@ -34,6 +37,7 @@ Build an intelligent business lead scraper that identifies prospects likely to p
 - Python 3.8 or higher
 - Chrome browser (for Selenium-based scraping)
 - Git
+- Supabase account (recommended) or local SQLite
 
 ### Setup
 
@@ -48,10 +52,50 @@ Build an intelligent business lead scraper that identifies prospects likely to p
    pip install -r requirements.txt
    ```
 
-3. **Verify installation**
+3. **Configure database (Supabase recommended)**
+   ```bash
+   # Copy environment template
+   cp env_example.txt .env
+   
+   # Edit .env with your Supabase credentials
+   # Get these from your Supabase project dashboard
+   ```
+
+4. **Setup Supabase database**
+   ```bash
+   python supabase_setup.py
+   ```
+
+5. **Verify installation**
    ```bash
    python main.py --help
    ```
+
+## 🗄️ Database Setup
+
+### Supabase (Recommended)
+
+1. **Create a Supabase project**
+   - Go to [supabase.com](https://supabase.com)
+   - Create a new project
+   - Note your project URL and database password
+
+2. **Configure environment variables**
+   ```bash
+   # In your .env file
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_ANON_KEY=your-anon-key-here
+   SUPABASE_DB_PASSWORD=your-database-password-here
+   ```
+
+3. **Run setup script**
+   ```bash
+   python supabase_setup.py
+   ```
+
+### SQLite (Local Development)
+
+For local development, the system will automatically use SQLite if no Supabase credentials are provided.
 
 ## 🎮 Usage
 
@@ -62,22 +106,56 @@ Run the scraper with default settings:
 python main.py
 ```
 
+### Database Management
+
+**View database statistics:**
+```bash
+python database_cli.py stats
+```
+
+**List leads:**
+```bash
+python database_cli.py list --limit 20 --min-score 7.0
+```
+
+**Search leads:**
+```bash
+python database_cli.py search "web design" --details
+```
+
+**Update lead status:**
+```bash
+python database_cli.py update 1 contacted --notes "Initial outreach sent"
+```
+
+**Export leads:**
+```bash
+python database_cli.py export --format csv --min-score 8.0
+```
+
 ### Advanced Usage
 
 ```python
 from main import LeadScraperOrchestrator
 
-# Initialize orchestrator
-orchestrator = LeadScraperOrchestrator()
+# Initialize orchestrator with database
+orchestrator = LeadScraperOrchestrator(use_database=True)
 
 # Run complete scraping process
 results = orchestrator.run_complete_scraping(
-    target_leads=20,    # Number of leads to scrape
-    min_score=7.0       # Minimum fit score (1-10)
+    target_leads=20,
+    min_score=7.0
 )
 
-# Access results
-print(f"Qualified leads: {len(orchestrator.qualified_leads)}")
+# Get leads from database
+leads = orchestrator.get_leads_from_database(
+    limit=50,
+    min_score=8.0,
+    industry="web design"
+)
+
+# Search leads
+search_results = orchestrator.search_leads_in_database("automation")
 ```
 
 ### Configuration
@@ -96,8 +174,12 @@ xeinst-lead-scraper/
 ├── config.py            # Configuration settings
 ├── utils.py             # Utility functions and helpers
 ├── scrapers.py          # Specialized scrapers for each source
+├── database.py          # Database models and operations
+├── database_cli.py      # Database management CLI
+├── supabase_setup.py    # Supabase setup script
 ├── requirements.txt     # Python dependencies
 ├── README.md           # This file
+├── env_example.txt     # Environment variables template
 └── outputs/            # Generated files (created automatically)
     ├── xeinst_leads_*.json
     ├── xeinst_leads_*.xlsx
@@ -150,23 +232,35 @@ xeinst-lead-scraper/
 - Data Quality: 15%
 - Contact Availability: 10%
 
-## 📋 Output Format
+## 📋 Database Schema
 
-Each lead includes:
-```json
-{
-  "name": "Business/Person Name",
-  "industry": "Primary industry or niche",
-  "website": "Main website URL",
-  "linkedin": "LinkedIn profile/company URL (if available)",
-  "email": "Contact email (if publicly available)",
-  "company_size": "Estimated employee count or business size",
-  "pain_points": "Identified automation opportunities (1-2 sentences)",
-  "fit_score": "1-10 rating of how well they match Xeinst's ideal customer profile",
-  "data_source": "Where this lead was discovered",
-  "last_updated": "Date of data collection"
-}
+### Leads Table
+```sql
+CREATE TABLE leads (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    industry VARCHAR(100) NOT NULL,
+    website VARCHAR(500) NOT NULL UNIQUE,
+    linkedin VARCHAR(500),
+    email VARCHAR(255),
+    company_size VARCHAR(100),
+    pain_points TEXT,
+    fit_score FLOAT NOT NULL,
+    data_source VARCHAR(100) NOT NULL,
+    last_updated TIMESTAMP DEFAULT NOW(),
+    is_contacted BOOLEAN DEFAULT FALSE,
+    contact_date TIMESTAMP,
+    notes TEXT,
+    status VARCHAR(50) DEFAULT 'new'
+);
 ```
+
+### Lead Statuses
+- `new`: Freshly scraped lead
+- `contacted`: Initial outreach made
+- `qualified`: Lead shows interest
+- `converted`: Lead became a customer
+- `rejected`: Lead not interested
 
 ## 🔍 Automation Opportunity Indicators
 
@@ -195,16 +289,12 @@ SCRAPING_CONFIG = {
 }
 ```
 
-### Industry Relevance Scores
+### Database Configuration
 ```python
-INDUSTRY_SCORES = {
-    "web_design": 9,
-    "digital_marketing": 8,
-    "ecommerce": 9,
-    "saas": 8,
-    "consulting": 7,
-    # ... more industries
-}
+# Environment variables
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_DB_PASSWORD=your-database-password
+DATABASE_URL=postgresql://postgres:password@host:5432/postgres
 ```
 
 ## 🛡️ Ethical Considerations
@@ -219,18 +309,28 @@ INDUSTRY_SCORES = {
 
 ### Common Issues
 
-1. **Chrome Driver Issues**
+1. **Supabase Connection Issues**
+   ```bash
+   # Check connection
+   python supabase_setup.py check
+   
+   # Verify environment variables
+   echo $SUPABASE_URL
+   echo $SUPABASE_DB_PASSWORD
+   ```
+
+2. **Chrome Driver Issues**
    ```bash
    # Reinstall Chrome driver
    pip uninstall webdriver-manager
    pip install webdriver-manager
    ```
 
-2. **Rate Limiting**
+3. **Rate Limiting**
    - Increase delay between requests in `config.py`
    - Use proxy rotation (advanced setup required)
 
-3. **Missing Dependencies**
+4. **Missing Dependencies**
    ```bash
    pip install -r requirements.txt --upgrade
    ```
@@ -251,11 +351,13 @@ logging.basicConfig(level=logging.DEBUG)
 2. **Add Custom Sources**: Extend scrapers in `scrapers.py` for additional sources
 3. **Fine-tune Delays**: Balance speed vs. reliability with request delays
 4. **Use Proxies**: Implement proxy rotation for high-volume scraping
+5. **Database Indexing**: Ensure proper database indexes for large datasets
 
 ### Monitoring
 
 - Check `scraper.log` for detailed operation logs
 - Review `scraping_report_*.json` for performance metrics
+- Monitor database statistics: `python database_cli.py stats`
 - Monitor success rates and error patterns
 
 ## 🤝 Contributing
@@ -283,8 +385,9 @@ This tool is for educational and legitimate business purposes only. Users are re
 For questions or issues:
 1. Check the troubleshooting section
 2. Review the logs in `scraper.log`
-3. Open an issue on GitHub
-4. Contact the development team
+3. Check database connection: `python supabase_setup.py check`
+4. Open an issue on GitHub
+5. Contact the development team
 
 ---
 
